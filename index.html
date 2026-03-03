@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Design System Builder</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Roboto:wght@300;400;500;700&family=Open+Sans:wght@300;400;600;700&family=Lato:wght@300;400;700&family=Source+Sans+3:wght@300;400;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;600;700&family=Nunito+Sans:wght@300;400;600;700&family=Montserrat:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Sidebar ─────────────────────────────────── -->
+  <nav class="sidebar" aria-label="Design steps">
+
+    <div class="brand">
+      <svg class="brand-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="36" height="36" rx="9" fill="#6366F1"/>
+        <rect x="6"  y="21" width="6" height="9"  rx="1.5" fill="white" opacity="0.75"/>
+        <rect x="15" y="14" width="6" height="16" rx="1.5" fill="white"/>
+        <rect x="24" y="9"  width="6" height="21" rx="1.5" fill="white" opacity="0.6"/>
+        <circle cx="9"  cy="18" r="2" fill="#A5B4FC"/>
+        <circle cx="18" cy="11" r="2" fill="#A5B4FC"/>
+        <circle cx="27" cy="7"  r="2" fill="#A5B4FC"/>
+        <polyline points="9,18 18,11 27,7" stroke="#A5B4FC" stroke-width="1.5" fill="none"/>
+      </svg>
+      <div class="brand-text">
+        <span class="brand-title">DesignSys</span>
+        <span class="brand-sub">Dashboard Builder</span>
+      </div>
+    </div>
+
+    <ul class="step-list" id="step-list" role="list"></ul>
+
+    <div class="sidebar-footer">
+      <div class="progress-row">
+        <span id="progress-label">Step 1 of 6</span>
+        <span id="progress-pct">17%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill" style="width:17%"></div>
+      </div>
+    </div>
+
+  </nav>
+
+  <!-- ── Workspace ───────────────────────────────── -->
+  <div class="workspace">
+
+    <!-- Step Panel -->
+    <section class="step-panel" id="step-panel">
+      <div class="step-panel-head">
+        <div class="step-badge" id="step-badge">01</div>
+        <div>
+          <h1 class="step-title" id="step-title"></h1>
+          <p  class="step-desc"  id="step-desc"></p>
+        </div>
+      </div>
+
+      <div class="step-content" id="step-content">
+        <!-- Rendered by JS -->
+      </div>
+
+      <div class="step-panel-foot">
+        <button class="btn btn-ghost" id="btn-prev" onclick="prevStep()">&#8592; Previous</button>
+        <button class="btn btn-primary" id="btn-next" onclick="nextStep()">Next Step &#8594;</button>
+      </div>
+    </section>
+
+    <!-- Preview Panel -->
+    <aside class="preview-panel">
+      <div class="preview-panel-head">
+        <span class="preview-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Live Preview
+        </span>
+        <div class="preview-controls">
+          <button class="preview-btn" onclick="adjustPreviewScale(-0.1)" title="Zoom out">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <span class="preview-scale-lbl" id="preview-scale-lbl">auto</span>
+          <button class="preview-btn" onclick="adjustPreviewScale(0.1)" title="Zoom in">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="preview-viewport" id="preview-viewport">
+        <div class="preview-scaler" id="preview-scaler">
+          <div class="dash-shell" id="dashboard-preview">
+            <!-- Built by buildPreview() -->
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div><!-- /workspace -->
+</div><!-- /app -->
+
+<!-- Toast -->
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- CDN libs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<script src="js/app.js"></script>
+</body>
+</html>
