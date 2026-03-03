@@ -10,9 +10,12 @@ const state = {
   currentStep: 0,
 
   brand: {
-    name:    'Acme Corp',
-    tagline: 'Data & Analytics',
-    initial: 'A'
+    name:           'Acme Corp',
+    tagline:        'Data & Analytics',
+    initial:        'A',
+    logoUrl:        null,   // data URL for uploaded logo
+    extractedColors:[],     // colors from brand image upload
+    guidelinesText: ''      // pasted brand guidelines text
   },
 
   colors: {
@@ -126,13 +129,37 @@ const STEPS = [
 // ─── Step Renderers ───────────────────────────────────────────────────────────
 
 function renderStepBrand() {
+  const ec = state.brand.extractedColors;
+  const extractedHtml = ec.length ? `
+    <div class="extracted-colors-wrap">
+      <div class="extracted-colors-label">Colors extracted from brand — click any to apply</div>
+      <div class="extracted-chips">
+        ${ec.map((col,i) => `
+          <div class="color-chip" style="background:${col}" title="${col}" onclick="applyExtractedColor(${i},'${col}')">
+            <div class="color-chip-hex">${col.toUpperCase()}</div>
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 12px" onclick="applyAllExtractedColors()">
+          ✦ Apply all to palette
+        </button>
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 12px" onclick="state.brand.extractedColors=[];renderCurrentStep();">
+          Clear
+        </button>
+      </div>
+    </div>` : '';
+
   return `
     <div class="form-section">
       <div class="form-section-title">Dashboard Identity</div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Dashboard / Brand Name</label>
+          <label class="form-label">Brand / Dashboard Name</label>
           <input type="text" value="${state.brand.name}" oninput="updateState('brand.name',this.value);updatePreview();" placeholder="e.g. Acme Corp">
+        </div>
+        <div class="form-group" style="max-width:88px">
+          <label class="form-label">Initial</label>
+          <input type="text" value="${state.brand.initial}" maxlength="2" oninput="updateState('brand.initial',this.value.toUpperCase());updatePreview();" placeholder="A">
         </div>
       </div>
       <div class="form-row">
@@ -140,11 +167,47 @@ function renderStepBrand() {
           <label class="form-label">Department / Tagline</label>
           <input type="text" value="${state.brand.tagline}" oninput="updateState('brand.tagline',this.value);updatePreview();" placeholder="e.g. Data & Analytics">
         </div>
-        <div class="form-group" style="max-width:100px">
-          <label class="form-label">Logo Initial</label>
-          <input type="text" value="${state.brand.initial}" maxlength="2" oninput="updateState('brand.initial',this.value.toUpperCase());updatePreview();" placeholder="A">
-        </div>
       </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Company Logo</div>
+      ${state.brand.logoUrl ? `
+        <div class="logo-preview-wrap">
+          <img src="${state.brand.logoUrl}" alt="Company logo">
+          <div class="logo-preview-info">
+            <div class="logo-preview-name">Logo uploaded</div>
+            <div class="logo-preview-size">Shown in preview &amp; PDF</div>
+          </div>
+          <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="removeLogo()">Remove</button>
+        </div>` : `
+        <label class="upload-zone">
+          <input type="file" accept="image/*" style="display:none" onchange="handleLogoUpload(this)">
+          <div class="upload-zone-icon">🏢</div>
+          <div class="upload-zone-label">Click to upload company logo</div>
+          <div class="upload-zone-sub">PNG, SVG, JPG — shown in dashboard header &amp; PDF cover</div>
+        </label>`}
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Brand Inspiration</div>
+      <div class="info-banner">
+        <span class="info-banner-icon">💡</span>
+        <span>Upload a brand image (logo, guidelines page, website screenshot) or paste your brand guidelines text. We'll extract the color palette and font suggestions automatically.</span>
+      </div>
+      <label class="upload-zone" style="margin-bottom:12px">
+        <input type="file" accept="image/*,.txt,.md" style="display:none" onchange="handleBrandUpload(this)">
+        <div class="upload-zone-icon">📎</div>
+        <div class="upload-zone-label">Upload brand image or text file</div>
+        <div class="upload-zone-sub">JPG · PNG · WebP · TXT · MD — colors extracted automatically</div>
+      </label>
+      ${extractedHtml}
+      <label class="form-label" style="display:block;margin-top:14px;margin-bottom:6px">Or paste brand guidelines text</label>
+      <textarea rows="3" placeholder="e.g. Primary: #1E3A5F · Accent: #00B4D8 · Font: Montserrat · Secondary: #F4A261..."
+        oninput="updateState('brand.guidelinesText',this.value)">${state.brand.guidelinesText}</textarea>
+      <button class="btn btn-ghost" style="margin-top:8px;font-size:12px" onclick="parseBrandText()">
+        ✨ Extract colors &amp; fonts from text
+      </button>
     </div>
 
     <div class="form-section">
@@ -154,12 +217,10 @@ function renderStepBrand() {
           <button class="preset-btn" data-preset="${key}" onclick="applyPreset('${key}')">
             <span class="preset-dots">${p.dots.map(c=>`<span class="preset-dot" style="background:${c}"></span>`).join('')}</span>
             ${p.label}
-          </button>
-        `).join('')}
+          </button>`).join('')}
       </div>
       <p style="font-size:11px;color:var(--text-lo);margin-top:8px;line-height:1.6">
-        Select a preset to prefill all colors, or skip ahead to customize manually.<br>
-        You can always override individual colors in the next step.
+        Pick a preset or use your brand colors above. All values can be fine-tuned in the next steps.
       </p>
     </div>`;
 }
@@ -493,6 +554,13 @@ function renderStepExport() {
           <span class="export-card-badge">PNG 600×400</span>
         </div>
 
+        <div class="export-card" onclick="exportMarkdown()" style="grid-column:1/-1;border-color:rgba(99,102,241,0.3);background:rgba(99,102,241,0.04)">
+          <div class="export-card-icon">📝</div>
+          <div class="export-card-title" style="color:var(--accent)">UX Compliance Guidelines (Markdown)</div>
+          <div class="export-card-desc">Complete rules document — colors, fonts, spacing, radius, KPI rules, table rules and a compliance checklist. Plug directly into the UX guideline compliance checker tool.</div>
+          <span class="export-card-badge" style="background:rgba(99,102,241,0.1);color:var(--accent);border-color:rgba(99,102,241,0.2)">.md Markdown</span>
+        </div>
+
       </div>
     </div>`;
 }
@@ -540,6 +608,169 @@ function applyPreset(key) {
 
 function updateFontLink() {
   // Fonts already loaded via <link> in head; just update preview
+}
+
+// ─── Logo Upload ───────────────────────────────────────────────────────────────
+
+function handleLogoUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    state.brand.logoUrl = e.target.result;
+    renderCurrentStep();
+    updatePreview();
+    showToast('Logo uploaded!');
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+  state.brand.logoUrl = null;
+  renderCurrentStep();
+  updatePreview();
+}
+
+// ─── Brand Upload & Color Extraction ──────────────────────────────────────────
+
+function handleBrandUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      extractDominantColors(e.target.result, colors => {
+        state.brand.extractedColors = colors;
+        renderCurrentStep();
+        showToast(`Extracted ${colors.length} brand colors — click any to apply!`);
+      });
+    };
+    reader.readAsDataURL(file);
+  } else if (file.type === 'text/plain' || /\.(txt|md)$/i.test(file.name)) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      state.brand.guidelinesText = e.target.result.slice(0, 3000);
+      renderCurrentStep();
+      parseBrandText();
+    };
+    reader.readAsText(file);
+  } else {
+    showToast('Please upload an image or a .txt / .md text file');
+  }
+}
+
+function extractDominantColors(imgDataUrl, callback) {
+  const img = new Image();
+  img.onload = function () {
+    const MAX = 140;
+    const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.max(1, Math.floor(img.width  * scale));
+    canvas.height = Math.max(1, Math.floor(img.height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+    const map = {};
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+      if (a < 128) continue;
+      const qr = Math.round(r / 22) * 22;
+      const qg = Math.round(g / 22) * 22;
+      const qb = Math.round(b / 22) * 22;
+      const avg = (qr + qg + qb) / 3;
+      if (avg > 238 || avg < 12) continue;             // skip near-white / near-black
+      const mx = Math.max(qr, qg, qb);
+      const mn = Math.min(qr, qg, qb);
+      if (mx > 0 && (mx - mn) / mx < 0.1) continue;   // skip near-gray
+      const key = `${Math.min(255,qr)},${Math.min(255,qg)},${Math.min(255,qb)}`;
+      map[key] = (map[key] || 0) + 1;
+    }
+    const colors = Object.entries(map)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([key]) => {
+        const [r, g, b] = key.split(',').map(Number);
+        return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+      });
+    callback(colors);
+  };
+  img.src = imgDataUrl;
+}
+
+function parseBrandText() {
+  const text = state.brand.guidelinesText || '';
+  if (!text.trim()) { showToast('Paste some brand guidelines text first'); return; }
+
+  // Hex colors
+  const hexColors = [...new Set((text.match(/#[0-9A-Fa-f]{6}/g) || []).map(h => h.toLowerCase()))];
+  // rgb() colors → hex
+  const rgbColors = (text.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/gi) || []).map(rgb => {
+    const nums = rgb.match(/\d+/g).map(Number);
+    return '#' + nums.slice(0, 3).map(v => Math.min(255,v).toString(16).padStart(2,'0')).join('');
+  });
+  const allColors = [...new Set([...hexColors, ...rgbColors])].slice(0, 8);
+
+  // Font names
+  const FONT_LIST = ['Inter','Roboto','Open Sans','Lato','Source Sans 3','Source Sans Pro',
+    'IBM Plex Sans','DM Sans','Nunito Sans','Nunito','Montserrat','Poppins','Raleway',
+    'Arial','Helvetica','Georgia','Calibri','DIN','Segoe UI','Noto Sans'];
+  const foundFonts = FONT_LIST.filter(f => new RegExp('\\b' + f + '\\b', 'i').test(text));
+
+  if (allColors.length === 0 && foundFonts.length === 0) {
+    showToast('No colors or fonts detected. Include hex codes like #1E3A5F or font names like Inter.');
+    return;
+  }
+
+  if (allColors.length > 0) {
+    state.brand.extractedColors = allColors;
+  }
+  if (foundFonts.length > 0) {
+    state.typography.headingFont = foundFonts[0];
+    state.typography.bodyFont    = foundFonts.length > 1 ? foundFonts[1] : foundFonts[0];
+  }
+  renderCurrentStep();
+  const msg = [
+    allColors.length  ? `${allColors.length} color${allColors.length > 1 ? 's' : ''} found` : '',
+    foundFonts.length ? `fonts: ${foundFonts.slice(0,2).join(', ')}` : ''
+  ].filter(Boolean).join(' · ');
+  showToast(msg || 'Done!');
+  updatePreview();
+}
+
+function applyExtractedColor(idx, hex) {
+  const [r, g, b] = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  let target;
+  if (brightness < 55)       { state.colors.pageBg    = hex; target = 'page background'; }
+  else if (brightness < 110) { state.colors.cardBg    = hex; target = 'card background'; }
+  else if (brightness > 210) { state.colors.textPrimary= hex; target = 'primary text'; }
+  else                       { state.colors.accent1   = hex; state.colors.chart[0] = hex; target = 'primary accent'; }
+  updatePreview();
+  showToast(`Applied ${hex.toUpperCase()} → ${target}`);
+}
+
+function applyAllExtractedColors() {
+  const colors = state.brand.extractedColors;
+  if (!colors.length) return;
+  const withBri = colors.map(hex => {
+    const [r, g, b] = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+    return { hex, bri: (r * 299 + g * 587 + b * 114) / 1000 };
+  }).sort((a, b) => a.bri - b.bri);
+
+  if (withBri.length >= 1) state.colors.pageBg   = withBri[0].hex;
+  if (withBri.length >= 2) state.colors.cardBg   = withBri[1].hex;
+  state.colors.headerBg = withBri[0].hex;
+  const bright = withBri[withBri.length - 1];
+  if (bright.bri > 185) state.colors.textPrimary = bright.hex;
+  const mids = withBri.filter(c => c.bri >= 55 && c.bri <= 195);
+  if (mids[0]) { state.colors.accent1 = mids[0].hex; state.colors.chart[0] = mids[0].hex; state.colors.tableHeaderBg = mids[0].hex; state.colors.kpiCardBg = mids[0].hex; }
+  if (mids[1]) { state.colors.accent2 = mids[1].hex; state.colors.chart[1] = mids[1].hex; }
+  if (mids[2]) state.colors.chart[2] = mids[2].hex;
+  if (mids[3]) state.colors.chart[3] = mids[3].hex;
+
+  updatePreview();
+  showToast('Brand palette applied! Fine-tune in Step 2.');
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -802,7 +1033,9 @@ function buildPreview() {
   preview.innerHTML = `
     <div class="dash-header">
       <div class="dash-header-left">
-        <div class="dash-logo-box">${state.brand.initial || state.brand.name.charAt(0).toUpperCase()}</div>
+        ${state.brand.logoUrl
+          ? `<img src="${state.brand.logoUrl}" alt="logo" style="height:34px;width:auto;max-width:80px;object-fit:contain;border-radius:4px">`
+          : `<div class="dash-logo-box">${state.brand.initial || state.brand.name.charAt(0).toUpperCase()}</div>`}
         <div>
           <div class="dash-brand-name">${state.brand.name}</div>
           <div class="dash-brand-tag">${state.brand.tagline}</div>
@@ -1296,6 +1529,331 @@ function exportPowerBIJson() {
     state.brand.name.replace(/\s+/g,'-').toLowerCase() + '-powerbi-theme.json'
   );
   showToast('Power BI theme JSON downloaded!');
+}
+
+// ─── Markdown Export (UX Compliance) ─────────────────────────────────────────
+
+function exportMarkdown() {
+  const c     = state.colors;
+  const t     = state.typography;
+  const l     = state.layout;
+  const comp  = state.components;
+  const brand = state.brand;
+  const today = new Date().toISOString().split('T')[0];
+
+  const sp = { compact:'10px 12px', normal:'14px 16px', spacious:'20px 24px' };
+  const gp = { compact:'8px', normal:'12px', spacious:'18px' };
+  const pad = sp[l.spacing] || '14px 16px';
+  const gap = gp[l.spacing] || '12px';
+  const chartPalette = c.chart.map(h => '`' + h.toUpperCase() + '`').join('  ');
+
+  const md =
+`---
+brand: ${brand.name}
+tagline: ${brand.tagline}
+generated: ${today}
+version: 1.0
+tool: Dashboard Design System Builder
+---
+
+# ${brand.name} — Dashboard Design Guidelines
+
+> These guidelines define the visual standards for all **${brand.tagline}** dashboards.
+> Use this document with the **UX Compliance Checker** to validate dashboard outputs.
+
+---
+
+## 1. Color System
+
+### Background & Structure
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| \`page-background\` | \`${c.pageBg.toUpperCase()}\` | Main page / canvas background |
+| \`card-background\` | \`${c.cardBg.toUpperCase()}\` | Cards, panels, visual containers |
+| \`header-background\` | \`${c.headerBg.toUpperCase()}\` | Top header bar |
+| \`nav-background\` | \`${c.navBg.toUpperCase()}\` | Navigation / tab bar |
+
+### Text
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| \`text-primary\` | \`${c.textPrimary.toUpperCase()}\` | Main body and heading text |
+| \`text-secondary\` | \`${c.textSecondary.toUpperCase()}\` | Labels, captions, secondary info |
+
+### Brand Accent Colors
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| \`accent-primary\` | \`${c.accent1.toUpperCase()}\` | Key CTAs, active states, highlights, table headers |
+| \`accent-secondary\` | \`${c.accent2.toUpperCase()}\` | Secondary highlights, chart series 2 |
+
+### Status & Alert Colors
+
+| Token | Hex | Meaning |
+|-------|-----|---------|
+| \`status-positive\` | \`${c.statusPos.toUpperCase()}\` | Favourable KPI change, on-track indicator |
+| \`status-warning\` | \`${c.statusWarn.toUpperCase()}\` | At-risk, requires attention |
+| \`status-negative\` | \`${c.statusNeg.toUpperCase()}\` | Unfavourable change, critical alert |
+
+### Table Colors
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| \`table-header-bg\` | \`${c.tableHeaderBg.toUpperCase()}\` | Table / column header background |
+| \`table-header-text\` | \`${c.tableHeaderText.toUpperCase()}\` | Table / column header text |
+
+### Data Visualization Palette (use strictly in this order)
+
+${chartPalette}
+
+> **Rule:** Always use chart colors in the defined order. Do not skip or reorder colors.
+> **Rule:** Never use more than **6 series** in a single chart visual.
+
+### Color Rules
+
+- MUST NOT introduce colors outside the defined palette
+- Status colors MUST be used exclusively for their defined meaning — never for decoration
+- Background colors MUST maintain a minimum WCAG AA contrast ratio (4.5:1) against text placed on them
+- Chart palette MUST be used in sequence — do not cherry-pick colors
+
+---
+
+## 2. Typography
+
+### Font Families
+
+| Role | Font | Fallback |
+|------|------|----------|
+| Heading / KPI Values / Titles | \`${t.headingFont}\` | system-ui, sans-serif |
+| Body / Labels / Table text | \`${t.bodyFont}\` | system-ui, sans-serif |
+
+### Size Scale
+
+| Element | Size | Weight | Font Role | Text Transform |
+|---------|------|--------|-----------|----------------|
+| Dashboard Title | \`${t.titleSize}px\` | \`700\` | Heading | — |
+| Card / Section Title | \`${t.cardTitleSize}px\` | \`700\` | Heading | uppercase |
+| KPI Value | \`${t.kpiValueSize}px\` | \`800\` | Heading | — |
+| Body Text | \`${t.bodySize}px\` | \`400\` | Body | — |
+| Label / Caption | \`${t.labelSize}px\` | \`500\` | Body | uppercase |
+
+### Typography Rules
+
+- MUST use \`${t.headingFont}\` for all KPI values, dashboard titles and card titles
+- MUST use \`${t.bodyFont}\` for table cell text, tooltips, labels and captions
+- MUST NOT use font sizes outside the defined scale above
+- Section headers and KPI labels MUST be uppercase (\`text-transform: uppercase\`)
+- Minimum readable text size: \`${t.labelSize}px\`
+- All text MUST meet **WCAG AA contrast ratio** (4.5:1 minimum) against its background
+
+---
+
+## 3. Layout & Spacing
+
+### Card Properties
+
+| Property | Value | Rule |
+|----------|-------|------|
+| Corner radius | \`${l.cardRadius}px\` | Apply uniformly to ALL card and panel components |
+| Drop shadow | \`${l.cardShadow ? `0 4px 16px rgba(0,0,0,0.35)` : 'none'}\` | ${l.cardShadow ? 'Required on all floating cards' : 'Flat design — no shadow'} |
+| Card border | \`${l.cardBorder ? '1px solid — text-secondary at 15% opacity' : 'none'}\` | ${l.cardBorder ? 'Required subtle border on all cards' : 'No card borders'} |
+| Internal padding | \`${pad}\` | Minimum — never reduce below \`10px\` on any side |
+| Gap between cards | \`${gap}\` | Consistent across all card grids and rows |
+| Dashboard body padding | \`${l.spacing === 'compact' ? '10px 16px' : l.spacing === 'spacious' ? '22px 32px' : '16px 24px'}\` | Outer padding of main content area |
+
+### Layout Structure (Required)
+
+Every dashboard MUST include these sections in this order:
+1. **Header bar** — brand logo, dashboard name, date/context, user avatar
+2. **Navigation tabs** — section-level navigation
+3. **Content area** — KPI row first, then charts, then tables
+4. **Footer** — brand name, report info, confidential label
+
+### Layout Rules
+
+- MUST apply \`${l.cardRadius}px\` corner radius to ALL card components — no mixing
+- MUST maintain minimum \`${gap}\` gap between all adjacent cards
+- DO NOT mix different padding values within the same dashboard section
+- KPI row MUST be the first content element after navigation tabs
+- MUST NOT render content outside defined card boundaries
+
+---
+
+## 4. KPI Cards
+
+### Style: **${l.kpiStyle.charAt(0).toUpperCase() + l.kpiStyle.slice(1)}**
+
+${l.kpiStyle === 'colored'
+? `- First / primary KPI card uses \`accent-primary\` (\`${c.accent1.toUpperCase()}\`) as background color
+- Remaining KPI cards use standard \`card-background\` (\`${c.cardBg.toUpperCase()}\`)
+- Text on colored card MUST be white (\`#FFFFFF\`) to ensure contrast`
+: l.kpiStyle === 'dark'
+? `- ALL KPI cards use \`card-background\` (\`${c.cardBg.toUpperCase()}\`)
+- No colored card backgrounds permitted in this style`
+: `- All KPI cards use \`card-background\` — accent expressed only via the left border bar
+- No filled colored backgrounds`}
+
+### Required KPI Card Elements
+
+Every KPI card **MUST** contain all three of the following elements:
+
+1. **Label** — uppercase, \`text-secondary\` color, \`${t.labelSize}px\`, body font (\`${t.bodyFont}\`)
+2. **Value** — \`${t.kpiValueSize}px\`, weight \`800\`, heading font (\`${t.headingFont}\`), \`text-primary\` color
+3. **Change Indicator** — directional symbol + percentage, correct status color
+
+### Change Indicator Rules
+
+| Scenario | Symbol | Color Token | Hex |
+|----------|--------|-------------|-----|
+| Positive change | \`▲\` | \`status-positive\` | \`${c.statusPos.toUpperCase()}\` |
+| Negative change | \`▼\` | \`status-negative\` | \`${c.statusNeg.toUpperCase()}\` |
+| No change / neutral | \`—\` | \`text-secondary\` | \`${c.textSecondary.toUpperCase()}\` |
+
+${comp.kpiAccentBar ? `### KPI Accent Bar
+
+- Required on all **non-colored** KPI cards
+- Position: left edge, full card height
+- Size: \`3px\` wide
+- Color: \`accent-primary\` (\`${c.accent1.toUpperCase()}\`)` : ''}
+
+### KPI Rules
+
+- MUST NOT omit change indicators — every KPI card must show trend direction
+- MUST NOT use custom colors outside the status palette for change indicators
+- KPI values MUST be the visually largest element within the card
+- MUST NOT display more than **5 KPI cards** in a single row
+
+---
+
+## 5. Tables
+
+### Style: **${l.tableStyle.charAt(0).toUpperCase() + l.tableStyle.slice(1)}**
+
+| Property | Value |
+|----------|-------|
+| Header background | \`${c.tableHeaderBg.toUpperCase()}\` |
+| Header text color | \`${c.tableHeaderText.toUpperCase()}\` |
+| Header font weight | \`700\` (bold) |
+| Header text transform | \`uppercase\` |
+| Header font size | \`${t.labelSize}px\` |
+| Header letter-spacing | \`0.08em\` |
+${l.tableStyle === 'striped' ? `| Alternating row stripe | \`text-secondary\` at 5% opacity |\n` : ''}| Row border | \`1px solid\` — \`text-secondary\` at 8% opacity |
+| Cell padding | \`7px 12px\` |
+| Cell font size | \`${t.bodySize}px\` |
+| Cell font | \`${t.bodyFont}\` |
+
+### Table Rules
+
+- Header row MUST use \`${c.tableHeaderBg.toUpperCase()}\` background — never \`card-background\`
+- Header text MUST be uppercase and weight \`700\`
+- Status and categorical values MUST use **badge components** with the correct status color background
+- MUST NOT exceed **7 columns** in a single table
+- Numeric columns MUST be right-aligned
+- Text columns MUST be left-aligned
+- Table borders MUST NOT visually compete with card border/radius
+
+---
+
+## 6. Charts
+
+### Chart Rules
+
+| Rule | Requirement |
+|------|-------------|
+| Maximum series | **6** per chart |
+| Colour order | Use palette in defined order — do not skip or reorder |
+| Grid lines | ${comp.showGridLines ? '**Required** — use `text-secondary` at 10–12% opacity' : '**Hidden** — clean/minimal style'} |
+| Bar corner style | ${comp.chartBarStyle === 'rounded' ? 'Rounded corners — **4px radius**' : 'Sharp / square corners — no radius'} |
+| Legend | Required when more than **2 series** are displayed |
+| Axis labels | Required — body font (\`${t.bodyFont}\`), \`${t.labelSize}px\`, \`text-secondary\` color |
+| Chart titles | Required — use card-title style (uppercase, \`${t.cardTitleSize}px\`, \`${t.headingFont}\`) |
+
+### Chart Do's
+
+- Use a consistent chart type for the same metric across dashboards
+- Ensure adequate contrast between series colors and background
+- Include clear axis labels and chart titles
+- Use \`text-secondary\` for all axis text and grid lines
+
+### Chart Don'ts
+
+- Do **not** use more than 6 colour series in a single chart
+- Do **not** use gradients in bars or columns unless brand-approved
+- Do **not** render charts without a title
+- Do **not** use chart colors for non-data elements (borders, backgrounds)
+
+---
+
+## 7. Compliance Checklist
+
+Use this checklist to validate any dashboard against these guidelines.
+
+### Colors
+- [ ] Page background is \`${c.pageBg.toUpperCase()}\`
+- [ ] Card backgrounds are \`${c.cardBg.toUpperCase()}\`
+- [ ] Header uses \`${c.headerBg.toUpperCase()}\`
+- [ ] Primary text is \`${c.textPrimary.toUpperCase()}\`
+- [ ] \`status-positive\` (\`${c.statusPos.toUpperCase()}\`) used only for positive/favourable states
+- [ ] \`status-negative\` (\`${c.statusNeg.toUpperCase()}\`) used only for negative/critical states
+- [ ] \`status-warning\` (\`${c.statusWarn.toUpperCase()}\`) used only for warning/at-risk states
+- [ ] Chart series use colors in defined palette order
+- [ ] No additional colors introduced outside the defined palette
+- [ ] All text meets WCAG AA contrast ratio (4.5:1) on its background
+
+### Typography
+- [ ] Heading font (\`${t.headingFont}\`) used for KPI values, dashboard titles and card titles
+- [ ] Body font (\`${t.bodyFont}\`) used for table cell text, labels and captions
+- [ ] KPI values are \`${t.kpiValueSize}px\`, weight \`800\`
+- [ ] Dashboard title is \`${t.titleSize}px\`, weight \`700\`
+- [ ] Card titles are \`${t.cardTitleSize}px\`, uppercase
+- [ ] Labels/captions are \`${t.labelSize}px\`, uppercase
+- [ ] No font sizes used outside the defined scale
+
+### Layout
+- [ ] All cards use \`${l.cardRadius}px\` corner radius uniformly
+- [ ] ${l.cardShadow ? 'Drop shadow (`0 4px 16px rgba(0,0,0,0.35)`) present on all floating cards' : 'No drop shadow (flat design)'}
+- [ ] ${l.cardBorder ? 'Subtle card border (1px solid) applied to all cards' : 'No card borders applied'}
+- [ ] Minimum \`${gap}\` gap maintained between all adjacent cards
+- [ ] Card internal padding is at least \`${pad}\`
+- [ ] Dashboard includes: header, navigation tabs, content area, footer
+- [ ] KPI row is the first content element after navigation
+
+### KPI Cards
+- [ ] Every KPI card contains label, value, and change indicator
+- [ ] Change indicators use correct status colors only
+- [ ] KPI style (${l.kpiStyle}) applied consistently across all KPI cards
+- [ ] KPI values use heading font at \`${t.kpiValueSize}px\`, weight \`800\`
+- [ ] No more than 5 KPI cards per row
+${comp.kpiAccentBar ? '- [ ] Left accent bar (3px, accent-primary) present on all non-colored KPI cards\n' : ''}
+### Tables
+- [ ] Table headers use \`${c.tableHeaderBg.toUpperCase()}\` background
+- [ ] Header text is uppercase, \`700\` weight, \`${t.labelSize}px\`
+- [ ] Status/categorical values use badge components with correct status colors
+${l.tableStyle === 'striped' ? '- [ ] Alternating row stripe styling applied\n' : ''}- [ ] No more than 7 columns per table
+- [ ] Numeric columns are right-aligned, text columns are left-aligned
+
+### Charts
+- [ ] Maximum 6 data series per chart
+- [ ] Chart colors used in defined palette order
+- [ ] ${comp.showGridLines ? 'Grid lines visible, using `text-secondary` at 10–12% opacity' : 'Grid lines hidden (clean/minimal style)'}
+- [ ] Bar corners are ${comp.chartBarStyle === 'rounded' ? 'rounded (4px radius)' : 'sharp/square'}
+- [ ] All charts have titles and axis labels
+- [ ] Legend present when more than 2 series displayed
+
+### Structure
+- [ ] Header bar present with brand logo/initial, dashboard name and date
+- [ ] Navigation tabs present and functional
+- [ ] Footer present with brand name and confidential label
+
+---
+
+*Generated by Dashboard Design System Builder · ${today} · ${brand.name} · Confidential*
+`;
+
+  downloadBlob(md, 'text/markdown',
+    brand.name.replace(/\s+/g, '-').toLowerCase() + '-ux-guidelines.md');
+  showToast('UX Compliance Markdown downloaded!');
 }
 
 // Page background PNG (1920×1080)
