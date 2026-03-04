@@ -14,7 +14,8 @@ const state = {
     tagline:        'Data & Analytics',
     initial:        'A',
     logoUrl:        null,   // data URL for uploaded logo
-    extractedColors:[],     // colors from brand image upload
+    extractedColors:[],     // brand (non-background) colors from image upload
+    extractedData:  null,   // { bgHex, bgBrightness, brandColors } from image analysis
     guidelinesText: ''      // pasted brand guidelines text
   },
 
@@ -129,21 +130,36 @@ const STEPS = [
 // ─── Step Renderers ───────────────────────────────────────────────────────────
 
 function renderStepBrand() {
-  const ec = state.brand.extractedColors;
+  const ec  = state.brand.extractedColors;
+  const ed  = state.brand.extractedData;
   const extractedHtml = ec.length ? `
     <div class="extracted-colors-wrap">
-      <div class="extracted-colors-label">Colors extracted from brand — click any to apply</div>
+      ${ed ? `
+        <div class="extracted-colors-label">Detected background color</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <div style="width:48px;height:32px;border-radius:6px;border:1.5px solid rgba(0,0,0,0.1);flex-shrink:0;background:${ed.bgHex}"></div>
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-hi)">${ed.bgHex.toUpperCase()}</div>
+            <div style="font-size:10px;color:var(--text-lo)">${ed.bgBrightness > 160 ? 'Light' : ed.bgBrightness > 80 ? 'Mid' : 'Dark'} background — applied to page &amp; cards</div>
+          </div>
+        </div>
+        <div class="extracted-colors-label">Primary brand colors (most frequent, in order)</div>` :
+        '<div class="extracted-colors-label">Detected brand colors — click to apply</div>'
+      }
       <div class="extracted-chips">
         ${ec.map((col,i) => `
-          <div class="color-chip" style="background:${col}" title="${col}" onclick="applyExtractedColor(${i},'${col}')">
+          <div class="color-chip" style="background:${col}" title="${col.toUpperCase()}${i===0?' — primary accent':i===1?' — secondary accent':' — chart color '+(i+1)}" onclick="applyExtractedColor(${i},'${col}')">
             <div class="color-chip-hex">${col.toUpperCase()}</div>
           </div>`).join('')}
       </div>
+      <div style="font-size:10px;color:var(--text-lo);margin-bottom:10px;display:flex;align-items:center;gap:5px">
+        <span>🟢🟡🔴</span> Status colors (green / amber / red) are always preserved
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-ghost" style="font-size:11px;padding:5px 12px" onclick="applyAllExtractedColors()">
-          ✦ Apply all to palette
+        <button class="btn btn-primary" style="font-size:11px;padding:6px 12px" onclick="applyAllExtractedColors()">
+          ✦ Apply full palette to dashboard
         </button>
-        <button class="btn btn-ghost" style="font-size:11px;padding:5px 12px" onclick="state.brand.extractedColors=[];renderCurrentStep();">
+        <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="state.brand.extractedColors=[];state.brand.extractedData=null;renderCurrentStep();">
           Clear
         </button>
       </div>
@@ -639,10 +655,11 @@ function handleBrandUpload(input) {
   if (file.type.startsWith('image/')) {
     const reader = new FileReader();
     reader.onload = e => {
-      extractDominantColors(e.target.result, colors => {
-        state.brand.extractedColors = colors;
+      extractBrandColors(e.target.result, data => {
+        state.brand.extractedData   = data;
+        state.brand.extractedColors = data.brandColors;
         renderCurrentStep();
-        showToast(`Extracted ${colors.length} brand colors — click any to apply!`);
+        showToast(`Detected background + ${data.brandColors.length} brand color${data.brandColors.length !== 1 ? 's' : ''} — click to apply!`);
       });
     };
     reader.readAsDataURL(file);
@@ -659,41 +676,72 @@ function handleBrandUpload(input) {
   }
 }
 
-function extractDominantColors(imgDataUrl, callback) {
+function extractBrandColors(imgDataUrl, callback) {
   const img = new Image();
   img.onload = function () {
-    const MAX = 140;
+    const MAX = 160;
     const scale = Math.min(MAX / img.width, MAX / img.height, 1);
     const canvas = document.createElement('canvas');
-    canvas.width  = Math.max(1, Math.floor(img.width  * scale));
-    canvas.height = Math.max(1, Math.floor(img.height * scale));
+    const W = canvas.width  = Math.max(1, Math.floor(img.width  * scale));
+    const H = canvas.height = Math.max(1, Math.floor(img.height * scale));
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    ctx.drawImage(img, 0, 0, W, H);
+    const data = ctx.getImageData(0, 0, W, H).data;
 
-    const map = {};
+    // ── Step 1: Detect background by sampling edges/corners ──────────────────
+    const EDGE = Math.max(2, Math.round(Math.min(W, H) * 0.06));
+    const bgMap = {};
+    function samplePixel(x, y) {
+      const idx = (y * W + x) * 4;
+      const r = data[idx], g = data[idx+1], b = data[idx+2], a = data[idx+3];
+      if (a < 200) return;
+      const qr = Math.round(r / 16) * 16;
+      const qg = Math.round(g / 16) * 16;
+      const qb = Math.round(b / 16) * 16;
+      const key = `${Math.min(255,qr)},${Math.min(255,qg)},${Math.min(255,qb)}`;
+      bgMap[key] = (bgMap[key] || 0) + 1;
+    }
+    for (let x = 0; x < W; x++) {
+      for (let e = 0; e < EDGE; e++) { samplePixel(x, e); samplePixel(x, H - 1 - e); }
+    }
+    for (let y = 0; y < H; y++) {
+      for (let e = 0; e < EDGE; e++) { samplePixel(e, y); samplePixel(W - 1 - e, y); }
+    }
+    const bgEntry = Object.entries(bgMap).sort((a, b) => b[1] - a[1])[0];
+    const bgRgb   = bgEntry ? bgEntry[0].split(',').map(Number) : [255, 255, 255];
+    const bgHex   = '#' + bgRgb.map(v => v.toString(16).padStart(2, '0')).join('');
+    const bgBrightness = (bgRgb[0] * 299 + bgRgb[1] * 587 + bgRgb[2] * 114) / 1000;
+
+    // ── Step 2: Collect saturated non-background brand colors ────────────────
+    const BG_THRESH = 40; // max channel distance to be considered "background-like"
+    const brandMap = {};
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
       if (a < 128) continue;
-      const qr = Math.round(r / 22) * 22;
-      const qg = Math.round(g / 22) * 22;
-      const qb = Math.round(b / 22) * 22;
-      const avg = (qr + qg + qb) / 3;
-      if (avg > 238 || avg < 12) continue;             // skip near-white / near-black
+      // Skip pixels that look like the background
+      if (Math.abs(r - bgRgb[0]) < BG_THRESH &&
+          Math.abs(g - bgRgb[1]) < BG_THRESH &&
+          Math.abs(b - bgRgb[2]) < BG_THRESH) continue;
+      // Quantize to 24-step buckets
+      const qr = Math.round(r / 24) * 24;
+      const qg = Math.round(g / 24) * 24;
+      const qb = Math.round(b / 24) * 24;
+      // Require meaningful saturation (skip near-gray)
       const mx = Math.max(qr, qg, qb);
       const mn = Math.min(qr, qg, qb);
-      if (mx > 0 && (mx - mn) / mx < 0.1) continue;   // skip near-gray
+      if (mx === 0 || (mx - mn) / mx < 0.18) continue;
       const key = `${Math.min(255,qr)},${Math.min(255,qg)},${Math.min(255,qb)}`;
-      map[key] = (map[key] || 0) + 1;
+      brandMap[key] = (brandMap[key] || 0) + 1;
     }
-    const colors = Object.entries(map)
+    const brandColors = Object.entries(brandMap)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
+      .slice(0, 8)
       .map(([key]) => {
         const [r, g, b] = key.split(',').map(Number);
         return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
       });
-    callback(colors);
+
+    callback({ bgHex, bgBrightness, brandColors });
   };
   img.src = imgDataUrl;
 }
@@ -739,38 +787,71 @@ function parseBrandText() {
 }
 
 function applyExtractedColor(idx, hex) {
-  const [r, g, b] = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  // Index-based semantic mapping — NEVER touches status colors
   let target;
-  if (brightness < 55)       { state.colors.pageBg    = hex; target = 'page background'; }
-  else if (brightness < 110) { state.colors.cardBg    = hex; target = 'card background'; }
-  else if (brightness > 210) { state.colors.textPrimary= hex; target = 'primary text'; }
-  else                       { state.colors.accent1   = hex; state.colors.chart[0] = hex; target = 'primary accent'; }
+  if (idx === 0) {
+    state.colors.accent1        = hex;
+    state.colors.chart[0]       = hex;
+    state.colors.tableHeaderBg  = hex;
+    state.colors.kpiCardBg      = hex;
+    target = 'primary accent';
+  } else if (idx === 1) {
+    state.colors.accent2  = hex;
+    state.colors.chart[1] = hex;
+    target = 'secondary accent';
+  } else if (idx < 8) {
+    state.colors.chart[idx] = hex;
+    target = `chart color ${idx + 1}`;
+  } else {
+    target = null;
+  }
+  if (!target) return;
   updatePreview();
-  showToast(`Applied ${hex.toUpperCase()} → ${target}`);
+  showToast(`Applied ${hex.toUpperCase()} \u2192 ${target}`);
 }
 
 function applyAllExtractedColors() {
-  const colors = state.brand.extractedColors;
-  if (!colors.length) return;
-  const withBri = colors.map(hex => {
-    const [r, g, b] = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
-    return { hex, bri: (r * 299 + g * 587 + b * 114) / 1000 };
-  }).sort((a, b) => a.bri - b.bri);
+  const ed = state.brand.extractedData;
+  if (!ed) {
+    // Fallback: simple index-based apply of extractedColors without bg data
+    state.brand.extractedColors.forEach((hex, i) => applyExtractedColor(i, hex));
+    updatePreview();
+    showToast('Brand palette applied! Fine-tune in Step 2.');
+    return;
+  }
 
-  if (withBri.length >= 1) state.colors.pageBg   = withBri[0].hex;
-  if (withBri.length >= 2) state.colors.cardBg   = withBri[1].hex;
-  state.colors.headerBg = withBri[0].hex;
-  const bright = withBri[withBri.length - 1];
-  if (bright.bri > 185) state.colors.textPrimary = bright.hex;
-  const mids = withBri.filter(c => c.bri >= 55 && c.bri <= 195);
-  if (mids[0]) { state.colors.accent1 = mids[0].hex; state.colors.chart[0] = mids[0].hex; state.colors.tableHeaderBg = mids[0].hex; state.colors.kpiCardBg = mids[0].hex; }
-  if (mids[1]) { state.colors.accent2 = mids[1].hex; state.colors.chart[1] = mids[1].hex; }
-  if (mids[2]) state.colors.chart[2] = mids[2].hex;
-  if (mids[3]) state.colors.chart[3] = mids[3].hex;
+  const { bgHex, bgBrightness, brandColors } = ed;
+  const isLight = bgBrightness > 140;
+
+  // Background colors — directly from detected image background
+  state.colors.pageBg  = bgHex;
+  state.colors.cardBg  = isLight ? lightenHex(bgHex, -8) : lightenHex(bgHex, 18);
+
+  // Header / nav — slightly darker/lighter variant of background
+  state.colors.headerBg = isLight ? lightenHex(bgHex, -20) : lightenHex(bgHex, -12);
+  state.colors.navBg    = isLight ? lightenHex(bgHex, -14) : lightenHex(bgHex, -8);
+
+  // Text — auto-infer from background brightness
+  state.colors.textPrimary   = isLight ? '#1A1A2E' : '#FFFFFF';
+  state.colors.textSecondary = isLight ? '#52527A' : '#94A3B8';
+
+  // Brand accent colors — NEVER touch statusPos / statusWarn / statusNeg
+  if (brandColors[0]) {
+    state.colors.accent1       = brandColors[0];
+    state.colors.chart[0]      = brandColors[0];
+    state.colors.tableHeaderBg = brandColors[0];
+    state.colors.tableHeaderText = isLight ? '#FFFFFF' : '#1A1A2E';
+    state.colors.kpiCardBg     = brandColors[0];
+  }
+  if (brandColors[1]) { state.colors.accent2 = brandColors[1]; state.colors.chart[1] = brandColors[1]; }
+  if (brandColors[2]) state.colors.chart[2] = brandColors[2];
+  if (brandColors[3]) state.colors.chart[3] = brandColors[3];
+  if (brandColors[4]) state.colors.chart[4] = brandColors[4];
+  if (brandColors[5]) state.colors.chart[5] = brandColors[5];
+  // statusPos / statusWarn / statusNeg intentionally NOT modified
 
   updatePreview();
-  showToast('Brand palette applied! Fine-tune in Step 2.');
+  showToast('Brand palette applied \u2014 backgrounds, text & accents updated! Fine-tune in Step 2.');
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
@@ -2029,9 +2110,9 @@ function hexToRgba(hex, alpha = 1) {
 
 function lightenHex(hex, pct) {
   if (!hex || hex.length < 7) return hex;
-  const r = Math.min(255, parseInt(hex.slice(1,3),16) + pct);
-  const g = Math.min(255, parseInt(hex.slice(3,5),16) + pct);
-  const b = Math.min(255, parseInt(hex.slice(5,7),16) + pct);
+  const r = Math.min(255, Math.max(0, parseInt(hex.slice(1,3),16) + pct));
+  const g = Math.min(255, Math.max(0, parseInt(hex.slice(3,5),16) + pct));
+  const b = Math.min(255, Math.max(0, parseInt(hex.slice(5,7),16) + pct));
   return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
 }
 
