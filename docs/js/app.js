@@ -1350,66 +1350,71 @@ async function exportPDF() {
   doc.setFontSize(22); doc.setFont('helvetica','bold');
   doc.text('Color Palette', 16, 28);
 
-  const colorGroups = [
-    { title:'Structure', items:[
-      {label:'Page Background',  hex: c.pageBg},
-      {label:'Card Background',  hex: c.cardBg},
-      {label:'Header',           hex: c.headerBg},
-      {label:'Navigation',       hex: c.navBg}
-    ]},
-    { title:'Text', items:[
-      {label:'Primary Text',     hex: c.textPrimary},
-      {label:'Secondary Text',   hex: c.textSecondary}
-    ]},
-    { title:'Accent', items:[
-      {label:'Primary Accent',   hex: c.accent1},
-      {label:'Secondary Accent', hex: c.accent2}
-    ]},
-    { title:'Status', items:[
-      {label:'Positive',         hex: c.statusPos},
-      {label:'Warning',          hex: c.statusWarn},
-      {label:'Negative',         hex: c.statusNeg}
-    ]}
-  ];
-
-  let gx = 16, gy = 40;
-  colorGroups.forEach(group => {
+  // Three fixed columns — each group rendered top-to-bottom within its column
+  // Col 1 (x=16): Structure  |  Col 2 (x=110): Text + Accent  |  Col 3 (x=204): Status
+  const SW = 28, SH = 13, ITEM_H = 18, GRP_TITLE_H = 10, GRP_GAP = 10;
+  const drawColGroup = (title, items, cx, startY) => {
+    let y = startY;
     setTextCol(c.textSecondary);
-    doc.setFontSize(8); doc.setFont('helvetica','bold');
-    doc.text(group.title.toUpperCase(), gx, gy + 5);
-    gy += 12;
-
-    group.items.forEach(item => {
-      setFill(item.hex); doc.roundedRect(gx, gy, 40, 24, 3, 3, 'F');
-      setDraw(blendHex(c.textSecondary, c.pageBg, 0.2));
-      doc.setLineWidth(0.3);
-      doc.roundedRect(gx, gy, 40, 24, 3, 3, 'S');
-
+    doc.setFontSize(7); doc.setFont('helvetica','bold');
+    doc.text(title.toUpperCase(), cx, y + 5);
+    y += GRP_TITLE_H;
+    items.forEach(item => {
+      setFill(item.hex);
+      doc.roundedRect(cx + 2, y + 1, SW, SH, 2, 2, 'F');
+      setDraw(blendHex('#808080', c.pageBg, 0.28));
+      doc.setLineWidth(0.2);
+      doc.roundedRect(cx + 2, y + 1, SW, SH, 2, 2, 'S');
       setTextCol(c.textPrimary);
-      doc.setFontSize(8); doc.setFont('helvetica','bold');
-      doc.text(item.label, gx + 44, gy + 10);
+      doc.setFontSize(7.5); doc.setFont('helvetica','bold');
+      doc.text(item.label, cx + 32, y + 7);
       setTextCol(c.textSecondary);
       doc.setFontSize(7); doc.setFont('helvetica','normal');
-      doc.text(item.hex.toUpperCase(), gx + 44, gy + 18);
-
-      gy += 30;
+      doc.text(item.hex.toUpperCase(), cx + 32, y + 13);
+      y += ITEM_H;
     });
-    gy += 8;
-    if (gy > 160) { gy = 40; gx += 120; }
-  });
+    return y;
+  };
 
-  // Chart palette
-  let px = 16, py = H - 55;
+  const c1End = drawColGroup('Structure', [
+    {label:'Page Background', hex: c.pageBg},
+    {label:'Card Background', hex: c.cardBg},
+    {label:'Header',          hex: c.headerBg},
+    {label:'Navigation',      hex: c.navBg}
+  ], 16, 36);
+
+  let c2y = 36;
+  c2y = drawColGroup('Text', [
+    {label:'Primary Text',   hex: c.textPrimary},
+    {label:'Secondary Text', hex: c.textSecondary}
+  ], 110, c2y) + GRP_GAP;
+  const c2End = drawColGroup('Accent', [
+    {label:'Primary Accent',   hex: c.accent1},
+    {label:'Secondary Accent', hex: c.accent2}
+  ], 110, c2y);
+
+  const c3End = drawColGroup('Status', [
+    {label:'Positive', hex: c.statusPos},
+    {label:'Warning',  hex: c.statusWarn},
+    {label:'Negative', hex: c.statusNeg}
+  ], 204, 36);
+
+  // Data visualization palette — positioned dynamically below the tallest column
+  const chartY = Math.max(c1End, c2End, c3End) + 14;
   setTextCol(c.textSecondary);
-  doc.setFontSize(8); doc.setFont('helvetica','bold');
-  doc.text('DATA VISUALIZATION PALETTE', px, py);
-  py += 8;
+  doc.setFontSize(7); doc.setFont('helvetica','bold');
+  doc.text('DATA VISUALIZATION PALETTE', 16, chartY);
 
-  c.chart.forEach((col, i) => {
-    setFill(col); doc.roundedRect(px + i * 36, py, 30, 20, 3, 3, 'F');
+  c.chart.forEach((chartCol, i) => {
+    const cx = 16 + i * 38;
+    setFill(chartCol);
+    doc.roundedRect(cx, chartY + 6, 32, 18, 3, 3, 'F');
+    setDraw(blendHex('#808080', c.pageBg, 0.28));
+    doc.setLineWidth(0.2);
+    doc.roundedRect(cx, chartY + 6, 32, 18, 3, 3, 'S');
     setTextCol(c.textSecondary);
-    doc.setFontSize(6.5);
-    doc.text(col.toUpperCase(), px + i * 36, py + 26, {maxWidth: 30});
+    doc.setFontSize(6.5); doc.setFont('helvetica','normal');
+    doc.text(chartCol.toUpperCase(), cx + 16, chartY + 30, {align:'center', maxWidth: 32});
   });
 
   // ── Page 3: Typography ─────────────────────────────────────
@@ -1438,7 +1443,7 @@ async function exportPDF() {
   typoItems.forEach(item => {
     setTextCol(c.textSecondary);
     doc.setFontSize(7); doc.setFont('helvetica','normal');
-    doc.text(item.label.toUpperCase() + '  ·  ' + item.font + '  ·  ' + (item.size/0.75).toFixed(0) + 'px', 16, ty);
+    doc.text(item.label.toUpperCase() + '  ·  ' + item.font + '  ·  ' + Math.round(item.size / 0.75) + 'pt', 16, ty);
 
     setTextCol(c.textPrimary);
     doc.setFontSize(item.size); doc.setFont('helvetica', item.weight);
@@ -1463,7 +1468,7 @@ async function exportPDF() {
     ['Card Corner Radius',   l.cardRadius + 'px'],
     ['Drop Shadow',          l.cardShadow ? 'Enabled — rgba(0,0,0,0.35) blur 16px' : 'Disabled'],
     ['Card Border',          l.cardBorder ? 'Enabled — 1px solid' : 'Disabled'],
-    ['Dashboard Spacing',    l.spacing.charAt(0).toUpperCase() + l.spacing.slice(1)],
+    ['Dashboard Spacing',    ({compact:'8px gap · 10px padding', normal:'12px gap · 14px padding', spacious:'18px gap · 20px padding'}[l.spacing]) || l.spacing],
     ['KPI Card Style',       l.kpiStyle.charAt(0).toUpperCase() + l.kpiStyle.slice(1)],
     ['Table Style',          l.tableStyle.charAt(0).toUpperCase() + l.tableStyle.slice(1)],
     ['Chart Bar Style',      state.components.chartBarStyle],
@@ -1471,37 +1476,42 @@ async function exportPDF() {
     ['KPI Accent Bar',       state.components.kpiAccentBar ? 'Shown' : 'Hidden']
   ];
 
+  // Left panel: specs table (x=16–170)  Right panel: card examples (x=178–280)
   let sy = 42;
   specs.forEach(([label, val]) => {
-    setFill(c.cardBg); doc.roundedRect(16, sy, 265, 16, 2, 2, 'F');
+    setFill(c.cardBg); doc.roundedRect(16, sy, 152, 14, 2, 2, 'F');
     setTextCol(c.textSecondary);
-    doc.setFontSize(8); doc.setFont('helvetica','normal');
-    doc.text(label, 22, sy + 10);
+    doc.setFontSize(7.5); doc.setFont('helvetica','normal');
+    doc.text(label, 22, sy + 9);
     setTextCol(c.textPrimary);
     doc.setFont('helvetica','bold');
-    doc.text(val, 165, sy + 10);
-    sy += 20;
+    doc.text(val, 105, sy + 9, {maxWidth: 58});
+    sy += 17;
   });
 
-  // KPI card mockup
-  const kpiX = 300, kpiY = 42;
-  [c.accent1, c.accent2, c.cardBg].forEach((bg, i) => {
-    const kx = kpiX + i * 68;
-    setFill(bg); doc.roundedRect(kx, kpiY, 60, 44, l.cardRadius * 0.4, l.cardRadius * 0.4, 'F');
+  // Card style examples — right panel, stacked vertically
+  // Shows background colour, corner radius, shadow and border only — no text or numbers
+  const CARD_EX_X = 178, CARD_EX_W = 100, CARD_EX_H = 42;
+  const rr = Math.max(0.5, l.cardRadius * 0.4);
+  setTextCol(c.textSecondary);
+  doc.setFontSize(7); doc.setFont('helvetica','bold');
+  doc.text('CARD STYLE EXAMPLES', CARD_EX_X, 38);
+  [[c.accent1,'Accent 1'],[c.accent2,'Accent 2'],[c.cardBg,'Default']].forEach(([bg, lbl], i) => {
+    const cy = 42 + i * (CARD_EX_H + 8);
+    setFill(bg);
+    doc.roundedRect(CARD_EX_X, cy, CARD_EX_W, CARD_EX_H, rr, rr, 'F');
     if (l.cardShadow) {
-      setDraw(blendHex('#000000', c.cardBg, 0.4));
+      setDraw(blendHex('#000000', c.pageBg, 0.35));
       doc.setLineWidth(0.5);
-      doc.roundedRect(kx, kpiY, 60, 44, l.cardRadius * 0.4, l.cardRadius * 0.4, 'S');
+      doc.roundedRect(CARD_EX_X, cy, CARD_EX_W, CARD_EX_H, rr, rr, 'S');
+    } else if (l.cardBorder) {
+      setDraw(blendHex(c.textSecondary, c.pageBg, 0.4));
+      doc.setLineWidth(0.3);
+      doc.roundedRect(CARD_EX_X, cy, CARD_EX_W, CARD_EX_H, rr, rr, 'S');
     }
-    const txtCol = i < 2 ? '#ffffff' : c.textPrimary;
-    setTextCol(txtCol);
-    doc.setFontSize(7); doc.setFont('helvetica','normal');
-    doc.text('METRIC LABEL', kx + 30, kpiY + 12, {align:'center'});
-    doc.setFontSize(16); doc.setFont('helvetica','bold');
-    doc.text(i === 0 ? '$2.4M' : i === 1 ? '48.3K' : '87.3%', kx + 30, kpiY + 28, {align:'center'});
-    setTextCol(c.statusPos);
-    doc.setFontSize(7); doc.setFont('helvetica','normal');
-    doc.text('▲ 12.3%', kx + 30, kpiY + 38, {align:'center'});
+    setTextCol(c.textSecondary);
+    doc.setFontSize(6.5); doc.setFont('helvetica','normal');
+    doc.text(lbl, CARD_EX_X + CARD_EX_W / 2, cy + CARD_EX_H + 6, {align:'center'});
   });
 
   // ── Page 5: Do's and Don'ts ────────────────────────────────
